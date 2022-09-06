@@ -1,0 +1,142 @@
+import arcpy
+import numpy as np
+import pandas as pd
+from numpy import log as ln
+import math
+
+arcpy.env.workspace = r"project path in arcgis"
+
+
+np.seterr(divide='ignore', invalid='ignore')
+## Landsat imaging
+raster_4 = arcpy.Raster(r'imaging path\LC08_L1TP_191022_20180607_20180615_01_T1_B4.tif', True)
+raster_5 = arcpy.Raster(r'imaging path\LC08_L1TP_191022_20180607_20180615_01_T1_B5.tif', True)
+raster_10 = arcpy.Raster(r'imaging path\LC08_L1TP_191022_20180607_20180615_01_T1_B10.tif', True)
+B4_numpy = arcpy.RasterToNumPyArray(raster_4,nodata_to_value=0)
+B5_numpy = arcpy.RasterToNumPyArray(raster_5,nodata_to_value=0)
+B10_numpy = arcpy.RasterToNumPyArray(raster_10,nodata_to_value=0)
+#korekcja TOA
+Radiance_MULTI_BAND_10=[]
+Radiance_MULTI_BAND_4=[]
+Radiance_MULTI_BAND_5=[]
+RADIANCE_ADD_BAND_10=[]
+RADIANCE_ADD_BAND_1 =[]
+RADIANCE_ADD_BAND_2 = []
+RADIANCE_ADD_BAND_3 = []
+RADIANCE_ADD_BAND_4 = []
+RADIANCE_ADD_BAND_5 = []
+RADIANCE_ADD_BAND_6 = []
+RADIANCE_ADD_BAND_7 =[]
+RADIANCE_ADD_BAND_8 = []
+RADIANCE_ADD_BAND_9 = []
+RADIANCE_ADD_BAND_10 = []
+RADIANCE_ADD_BAND_11 =[]
+K1_CONSTANT_BAND_10 =[]
+K2_CONSTANT_BAND_10=[]
+X_left_coordiante=[]
+Y_left_coordiante=[]
+UTM_zone=[]
+with open(r' MTL FILE path\LANDSAT_8\LC08_L1TP_191022_20180607_20180615_01_T1_MTL.txt') as MTL:
+    h=[]
+    n=1
+    for line in MTL:
+        c=line.partition("=")
+        h.append([n,c[2]])
+        n+=1
+k=0
+for i in h:
+    k+=1
+    if k==236:
+        Radiance_MULTI_BAND_10.append(float(i[1]))
+    elif k==230:
+        Radiance_MULTI_BAND_4.append(float(i[1]))
+    elif k==231:
+        Radiance_MULTI_BAND_5.append(float(i[1]))
+    elif k==247:
+        RADIANCE_ADD_BAND_10.append(float(i[1]))
+    # elif k==238:
+    #     RADIANCE_ADD_BAND_1.append(float(i[1]))
+    # elif k==239:
+    #     RADIANCE_ADD_BAND_2.append(float(i[1]))
+    # elif k==240:
+    #     RADIANCE_ADD_BAND_3.append(float(i[1]))
+    elif k==241:
+        RADIANCE_ADD_BAND_4.append(float(i[1]))
+    elif k==242:
+        RADIANCE_ADD_BAND_5.append(float(i[1]))
+    # elif k==243:
+    #     RADIANCE_ADD_BAND_6.append(float(i[1]))
+    # elif k==244:
+    #     RADIANCE_ADD_BAND_7.append(float(i[1]))
+    # elif k==245:
+    #     RADIANCE_ADD_BAND_8.append(float(i[1]))
+    # elif k==246:
+    #     RADIANCE_ADD_BAND_9.append(float(i[1]))
+    elif k==247:
+        RADIANCE_ADD_BAND_10.append(float(i[1]))
+    elif k==269:
+        K1_CONSTANT_BAND_10.append(float(i[1]))
+    elif k==270:
+        K2_CONSTANT_BAND_10.append(float(i[1]))
+    elif k==108:
+        X_left_coordiante.append(float(i[1]))
+    elif k==109:
+        Y_left_coordiante.append(float(i[1]))
+    elif k==85:
+        UTM_zone.append(int(i[1])-28+25828)
+
+
+arcpy.env.outputCoordinateSystem = arcpy.SpatialReference(UTM_zone[0]) #set spatial reference
+
+
+
+    # elif k==248:
+    #     RADIANCE_ADD_BAND_11.append(float(i[1]))
+TOA_band_10=Radiance_MULTI_BAND_10*B10_numpy+RADIANCE_ADD_BAND_10
+TOA_band_4=Radiance_MULTI_BAND_4*B4_numpy+RADIANCE_ADD_BAND_4
+TOA_band_5=Radiance_MULTI_BAND_5*B10_numpy+RADIANCE_ADD_BAND_5
+
+###CONVERSION TOA TO BRIGHTNESS OF THE TEMPERATURE
+BT=(K2_CONSTANT_BAND_10/np.log((K1_CONSTANT_BAND_10/TOA_band_10)+1))-273.15
+
+###NDVI
+
+NDVI=(TOA_band_5-TOA_band_4)/(TOA_band_5+TOA_band_4)
+###Proporcja roslinnosci
+
+P_v=np.sqrt((NDVI-np.min(NDVI))/(np.max(NDVI)-np.min(NDVI)))
+
+#EMISSIVITY
+
+E=0.004*P_v+0.986
+
+
+#SURFACE TEMPERATURE
+
+LST=(BT/(1+(0.00115*BT/1.4388)*np.log(E)))
+print(LST)
+LST2=np.where(LST<-100,-60,LST)
+print(LST2)
+point = arcpy.Point(X_left_coordiante[0],Y_left_coordiante[0])
+LST_raster = arcpy.NumPyArrayToRaster(LST2,point,30, 30, value_to_nodata=-60)
+LST_raster.save("E:\mapa\est_termalna.tif")
+print("FINISH")
+
+#df=df.read_table()
+# global_var = {}
+# with open(r"MTL FILE PATH \LC08_L1TP_191022_20200815_20200919_02_T1_MTL.xml") as MTL:
+#     for line in MTL:
+#         name, var = line.partition("=")[::2]
+#         global_var["CORNER_UL_PROJECTION_X_PRODUCT"]= var
+#
+# print(global_var)
+
+#wspolrzedne=df[["POINT_X_address","POINT_Y_address"]].to_numpy()
+
+# df["B"] = df[0].str.extract("(\d*\.?\d+)", expand=True)
+# a=df.iloc[[234],:]
+
+# array = band_1.read()
+# b=band_1.shape
+#
+# print(b)
